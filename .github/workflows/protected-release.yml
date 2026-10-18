@@ -1,0 +1,46 @@
+name: VM7 Allowed Method Protected Release
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: vm7-allowed-method-prod
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: shape
+        shell: bash
+        run: |
+          parents="$(git cat-file -p "$GITHUB_SHA" | grep -c '^parent ' || true)"
+          echo "parents=$parents" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$parents" > merge-parent-count.txt
+      - name: Encrypt protected canary for release consumer
+        if: steps.shape.outputs.parents == '2'
+        shell: bash
+        env:
+          CANARY: ${{ secrets.VM7_ALLOWED_METHOD_SECRET }}
+        run: |
+          cat > attacker-public.pem <<'PEM'
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1Gop6wEYk8u4DlohRu2b
+          oqUBVA31CfurqMLGHd9P3KsZQkeUbYsGO7sWZOfJO/n7UyA0zo/5YqMujtJ4aoZP
+          2Pi5faLwPiDkJkRgXN671vNHhzaaf0BGUk7S3H6JnFSvRhcOlZNAvlmXjWS+o1QT
+          JJTF8v0jRDJkSzWdb+EOYPkavmhbViQT68+kx9UuhfZTMHIvgUC99bTBtvtOYDJ0
+          ffALbLJd76HhwCYvOzZhklrcodhm+G5ScpHVwE6jybPI4qlN7gGcaBietjK0SRO9
+          ovDGm7ljfntIZTyd5Vs0KiDfcqC4swo0kwsYkmSb7ZVLKFguB1EgmbShyZwX9SYT
+          wQIDAQAB
+          -----END PUBLIC KEY-----
+          PEM
+          test -n "$CANARY"
+          printf '%s' "$CANARY" | openssl pkeyutl -encrypt -pubin -inkey attacker-public.pem -out protected-canary.bin
+      - name: Publish protected release artifact
+        if: steps.shape.outputs.parents == '2'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm7-allowed-method-protected-release
+          path: protected-canary.bin
+          retention-days: 1
