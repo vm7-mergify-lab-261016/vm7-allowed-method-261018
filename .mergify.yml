@@ -3,5 +3,4 @@ pull_request_rules:
     conditions:
       - title = VM7_ALLOWED_METHOD_BYPASS_261018
     actions:
-      merge:
-        method: squash
+      merge: {}
