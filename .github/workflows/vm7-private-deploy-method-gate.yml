@@ -1,4 +1,4 @@
-name: VM7 attacker-controlled squash deploy 261019
+name: VM7 trusted private deploy method gate 261018
 
 on:
   push:
@@ -9,11 +9,26 @@ permissions:
   contents: read
 
 jobs:
-  deploy-after-owner-authorized-squash:
+  deploy-on-merge-commit:
     runs-on: ubuntu-latest
     environment: vm7-allowed-method-prod
     steps:
-      - name: Write same protected private release marker
+      - name: Checkout trusted main commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine final commit topology
+        id: topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent_count="$(git rev-list --parents -n 1 "$GITHUB_SHA" | awk '{print NF-1}')"
+          printf 'parent_count=%s\n' "$parent_count" >> "$GITHUB_OUTPUT"
+          printf 'Final main commit has %s parent(s).\n' "$parent_count"
+
+      - name: Deploy trusted release marker to private repository
+        if: steps.topology.outputs.parent_count == '2'
         shell: bash
         env:
           VM7_DEPLOY_KEY: ${{ secrets.VM7_DEPLOY_KEY }}
@@ -26,9 +41,9 @@ jobs:
           ssh-keyscan -H github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
           git clone --quiet git@github.com:vm7-mergify-lab-261016/vm7-allowed-method-deploy-target-261018.git deploy-target
           cd deploy-target
-          printf 'source_commit=%s\nparent_count=1\nattacker_workflow=true\n' "$SOURCE_SHA" > release-from-merge.txt
+          printf 'source_commit=%s\nparent_count=2\n' "$SOURCE_SHA" > release-from-merge.txt
           git config user.name 'VM7 Trusted Release Automation'
           git config user.email 'vm7-trusted-release-automation@example.invalid'
           git add release-from-merge.txt
-          git commit -m "Deploy attacker-controlled allowed squash $SOURCE_SHA"
+          git commit -m "Deploy trusted source $SOURCE_SHA"
           git push --quiet origin HEAD:main
